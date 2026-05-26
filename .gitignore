@@ -1,0 +1,7 @@
+__pycache__/
+*.py[cod]
+*.so
+.python_path
+.env
+test_frames/
+.claude/
