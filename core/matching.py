@@ -251,31 +251,52 @@ def clamp_to_fill_frame(
     source_height: int,
     timeline_width: int,
     timeline_height: int,
+    match_space: str = MatchSpace.CANVAS,
 ) -> dict:
     """Clamp Pan/Tilt/Zoom so the source fully covers the timeline canvas.
 
-    Enforces:
-      - Zoom >= the minimum that covers the canvas at the source/timeline
-        aspect ratio (1.0 when aspects match; larger for mismatched aspects).
-      - |Pan|  <= (sW*zoom - tW/fit) / 2
-      - |Tilt| <= (sH*zoom - tH/fit) / 2
+    Two cases that mirror to_resolve_transform's two pipelines:
 
-    At minimum zoom both Pan and Tilt are forced to 0 — i.e. Pan/Tilt can only
-    be non-zero once there's slack in the zoom to move within. Useful for
-    conform shots where the editor's reference framing peeks past unpainted
-    edges of the source.
+    CANVAS (Resolve letterbox / "Scale entire image to fit"):
+      The source is scaled to fit inside the canvas with `min(fit_x, fit_y)`,
+      so it starts letterboxed and must zoom in to cover both axes.
+        zoom_min = max(fit_x, fit_y) / min(fit_x, fit_y)
+        |Pan|  <= (sW*zoom - tW/fit) / 2     in source pixels
+        |Tilt| <= (sH*zoom - tH/fit) / 2     in source pixels
+
+    RAW (Resolve crop-fill / "Scale full frame with crop"):
+      The source is scaled with `max(fit_x, fit_y)` and already covers the
+      canvas at zoom = 1; one axis is bound to the canvas and the other has
+      cropped slack. Pan/Tilt along the cropped axis are expressed in
+      timeline-scaled units to match to_resolve_transform's RAW convention.
+
+    In both cases, at zoom_min both Pan and Tilt are forced to 0 along the
+    binding axis — Pan/Tilt can only move once there's slack to move within.
     """
     sW, sH = float(source_width), float(source_height)
     tW, tH = float(timeline_width), float(timeline_height)
     fit_x = tW / sW
     fit_y = tH / sH
-    fit = min(fit_x, fit_y)
-    zoom_min = max(fit_x, fit_y) / fit
 
-    zoom = max(float(xform["ZoomX"]), zoom_min)
-
-    pan_limit = max(0.0, (sW * zoom - tW / fit) / 2.0)
-    tilt_limit = max(0.0, (sH * zoom - tH / fit) / 2.0)
+    if match_space == MatchSpace.RAW:
+        fit = max(fit_x, fit_y)
+        zoom_min = 1.0
+        zoom = max(float(xform["ZoomX"]), zoom_min)
+        pan_src_limit = max(0.0, (sW * zoom - tW / fit) / 2.0)
+        tilt_src_limit = max(0.0, (sH * zoom - tH / fit) / 2.0)
+        # Match to_resolve_transform's axis-dependent Pan/Tilt scaling.
+        if fit_y >= fit_x:
+            pan_limit = pan_src_limit * fit_x
+            tilt_limit = tilt_src_limit
+        else:
+            pan_limit = pan_src_limit
+            tilt_limit = tilt_src_limit * fit_y
+    else:
+        fit = min(fit_x, fit_y)
+        zoom_min = max(fit_x, fit_y) / fit
+        zoom = max(float(xform["ZoomX"]), zoom_min)
+        pan_limit = max(0.0, (sW * zoom - tW / fit) / 2.0)
+        tilt_limit = max(0.0, (sH * zoom - tH / fit) / 2.0)
 
     pan = max(-pan_limit, min(pan_limit, float(xform["Pan"])))
     tilt = max(-tilt_limit, min(tilt_limit, float(xform["Tilt"])))

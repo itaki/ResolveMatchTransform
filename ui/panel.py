@@ -130,11 +130,14 @@ class MatchWorker(QThread):
             )
 
             if self.fill_frame:
-                clamped = matching.clamp_to_fill_frame(xform, src_w, src_h, tl_w, tl_h)
+                clamped = matching.clamp_to_fill_frame(
+                    xform, src_w, src_h, tl_w, tl_h, match_space=result.match_space,
+                )
                 if clamped != xform:
                     _diag(
-                        f"   clamped to fill: Pan={clamped['Pan']:+.3f} "
-                        f"Tilt={clamped['Tilt']:+.3f} ZoomX={clamped['ZoomX']:.6f}"
+                        f"   clamped to fill ({result.match_space}): "
+                        f"Pan={clamped['Pan']:+.3f} Tilt={clamped['Tilt']:+.3f} "
+                        f"ZoomX={clamped['ZoomX']:.6f}"
                     )
                 xform = clamped
 
